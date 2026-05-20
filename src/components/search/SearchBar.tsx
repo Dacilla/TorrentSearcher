@@ -110,7 +110,7 @@ export function SearchBar({
         <button
           type="submit"
           disabled={!query.trim() || isLoading}
-          className="flex h-12 items-center gap-2 rounded-lg bg-teal-300 px-5 font-semibold text-zinc-950 transition-colors hover:bg-teal-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-300/70 disabled:cursor-not-allowed disabled:opacity-40"
+          className="flex h-12 items-center gap-2 rounded-lg bg-teal-300 px-5 font-semibold text-teal-950 transition-colors hover:bg-teal-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-300/70 disabled:cursor-not-allowed disabled:opacity-40"
         >
           {isLoading ? <Loader2 size={16} className="animate-spin" /> : null}
           Search

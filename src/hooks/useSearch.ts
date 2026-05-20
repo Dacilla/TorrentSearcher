@@ -30,16 +30,17 @@ function normaliseTitle(title: string): string {
 }
 
 function mergeResults(existing: TorrentResult[], incoming: TorrentResult[]): TorrentResult[] {
-  const seenHashes = new Map(
-    existing.flatMap((r) => {
-      const sources = r.duplicateSources ?? [];
-      return [r, ...sources]
-        .filter((source) => source.infoHash)
-        .map((source) => [source.infoHash!, r.id] as const);
-    })
-  );
+  const seenHashes = new Map<string, string>();
   const seenTitles = new Map(existing.map((r) => [normaliseTitle(r.title), r.id]));
   const merged = [...existing];
+  const idIndex = new Map(merged.map((r, i) => [r.id, i]));
+
+  for (const r of existing) {
+    if (r.infoHash) seenHashes.set(r.infoHash, r.id);
+    for (const s of r.duplicateSources ?? []) {
+      if (s.infoHash) seenHashes.set(s.infoHash, r.id);
+    }
+  }
 
   const appendSource = (idx: number, result: TorrentResult, duplicateGroup: string) => {
     const source = toTorrentSource(result);
@@ -61,18 +62,20 @@ function mergeResults(existing: TorrentResult[], incoming: TorrentResult[]): Tor
   for (const result of incoming) {
     if (result.infoHash && seenHashes.has(result.infoHash)) {
       const existingId = seenHashes.get(result.infoHash)!;
-      const existingIdx = merged.findIndex((r) => r.id === existingId);
-      if (existingIdx >= 0) appendSource(existingIdx, result, existingId);
+      const existingIdx = idIndex.get(existingId);
+      if (existingIdx !== undefined) appendSource(existingIdx, result, existingId);
       continue;
     }
 
     const normTitle = normaliseTitle(result.title);
     const existingId = seenTitles.get(normTitle);
     if (existingId) {
-      const existingIdx = merged.findIndex((r) => r.id === existingId);
-      if (existingIdx >= 0) appendSource(existingIdx, result, existingId);
+      const existingIdx = idIndex.get(existingId);
+      if (existingIdx !== undefined) appendSource(existingIdx, result, existingId);
     } else {
+      const newIdx = merged.length;
       merged.push(result);
+      idIndex.set(result.id, newIdx);
       if (result.infoHash) seenHashes.set(result.infoHash, result.id);
       seenTitles.set(normTitle, result.id);
     }

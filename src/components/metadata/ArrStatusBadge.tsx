@@ -1,9 +1,10 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { ArrInfo, ArrStatus, MediaInfo } from '@/types';
+import { useArrInfo } from '@/hooks/useArrInfo';
 import { CheckCircle, AlertCircle, Circle, Plus, Loader2 } from 'lucide-react';
 
 interface Props {
@@ -40,29 +41,9 @@ function statusVariant(status: ArrStatus): string {
 }
 
 export function ArrStatusBadge({ mediaInfo }: Props) {
-  const [arrInfo, setArrInfo] = useState<ArrInfo | null>(null);
+  const { arrInfo, error, setError, setArrInfo } = useArrInfo(mediaInfo);
   const [adding, setAdding] = useState(false);
   const [confirming, setConfirming] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    setArrInfo(null);
-    setError(null);
-    setConfirming(false);
-    const isTv = mediaInfo.contentType === 'tv';
-
-    if (isTv && mediaInfo.tvdbId) {
-      fetch(`/api/sonarr/status?tvdbId=${mediaInfo.tvdbId}`)
-        .then((r) => r.json())
-        .then((d) => setArrInfo(d as ArrInfo))
-        .catch(() => setArrInfo({ status: 'error' }));
-    } else if (!isTv && mediaInfo.tmdbId) {
-      fetch(`/api/radarr/status?tmdbId=${mediaInfo.tmdbId}`)
-        .then((r) => r.json())
-        .then((d) => setArrInfo(d as ArrInfo))
-        .catch(() => setArrInfo({ status: 'error' }));
-    }
-  }, [mediaInfo]);
 
   const handleAdd = async () => {
     setAdding(true);

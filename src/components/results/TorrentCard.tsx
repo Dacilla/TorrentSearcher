@@ -30,12 +30,12 @@ function formatBytes(bytes: number): string {
   return `${(bytes / Math.pow(1024, i)).toFixed(2)} ${units[i]}`;
 }
 
+const dateFormatter = new Intl.DateTimeFormat('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+
 function formatDate(iso: string): string {
   if (!iso) return '';
   try {
-    return new Intl.DateTimeFormat('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }).format(
-      new Date(iso)
-    );
+    return dateFormatter.format(new Date(iso));
   } catch {
     return iso;
   }

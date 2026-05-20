@@ -66,7 +66,7 @@ function parseInlineCaps(
     const m = searching?.[name] as Record<string, unknown> | undefined;
     if (!m) return [];
     const p = m['@_supportedParams'] ?? '';
-    return typeof p === 'string' ? p.split(',').map((s) => s.trim()).filter(Boolean) : [];
+    return typeof p === 'string' ? p.split(',').flatMap((s) => { const t = s.trim(); return t ? [t] : []; }) : [];
   };
 
   const tvRawParams = getSupportedParams('tv-search');

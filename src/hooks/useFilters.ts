@@ -1,17 +1,20 @@
 'use client';
 
 import { useState, useMemo } from 'react';
-import { TorrentResult, ResultFilters, Resolution, VideoCodec, Source } from '@/types';
+import { TorrentResult, ResultFilters, Resolution, VideoCodec, Source, KNOWN_GOOD_GROUPS } from '@/types';
+import { scoreTorrent } from '@/lib/results/scoring';
 
 const DEFAULT_FILTERS: ResultFilters = {
   resolutions: [],
   codecs: [],
   sources: [],
   freeleechOnly: false,
+  hdrOnly: false,
+  knownGroupOnly: false,
   minSeeders: 0,
 };
 
-export type SortKey = 'seeders' | 'date' | 'size' | 'resolution';
+export type SortKey = 'seeders' | 'date' | 'size' | 'resolution' | 'score' | 'title' | 'leechers' | 'indexer';
 
 const RESOLUTION_ORDER: Resolution[] = ['2160p', '1080p', '720p', '480p', 'unknown'];
 const resolutionRank = (r: Resolution) => RESOLUTION_ORDER.indexOf(r);
@@ -35,20 +38,34 @@ export function filterAndSortResults(
   if (filters.freeleechOnly) {
     list = list.filter((r) => r.releaseInfo.isFreeleech);
   }
+  if (filters.hdrOnly) {
+    list = list.filter((r) => r.releaseInfo.hdr || r.releaseInfo.dolbyVision);
+  }
+  if (filters.knownGroupOnly) {
+    list = list.filter((r) => KNOWN_GOOD_GROUPS.has(r.releaseInfo.releaseGroup ?? ''));
+  }
   if (filters.minSeeders > 0) {
     list = list.filter((r) => r.seeders >= filters.minSeeders);
   }
 
-  return [...list].sort((a, b) => {
+  return list.toSorted((a, b) => {
     switch (sort) {
       case 'seeders':
         return b.seeders - a.seeders;
+      case 'leechers':
+        return b.leechers - a.leechers;
       case 'date':
         return new Date(b.publishDate).getTime() - new Date(a.publishDate).getTime();
       case 'size':
         return b.size - a.size;
       case 'resolution':
         return resolutionRank(a.releaseInfo.resolution) - resolutionRank(b.releaseInfo.resolution);
+      case 'score':
+        return scoreTorrent(b) - scoreTorrent(a);
+      case 'title':
+        return a.title.localeCompare(b.title);
+      case 'indexer':
+        return a.indexerName.localeCompare(b.indexerName);
       default:
         return 0;
     }

@@ -18,23 +18,14 @@ async function runWithConcurrency<T>(
   limit: number
 ): Promise<void> {
   const queue = [...tasks];
-  const running = new Set<Promise<void>>();
-
-  const start = () => {
-    if (queue.length === 0) return;
-    const task = queue.shift()!;
-    const p: Promise<void> = task().then(() => { running.delete(p); }).catch(() => { running.delete(p); });
-    running.add(p);
+  const next = async (): Promise<void> => {
+    const task = queue.shift();
+    if (!task) return;
+    await task();
+    return next();
   };
-
-  // Fill initial slots
-  for (let i = 0; i < Math.min(limit, tasks.length); i++) start();
-
-  while (running.size > 0) {
-    await Promise.race(running);
-    // After any task finishes, start the next one
-    while (running.size < limit && queue.length > 0) start();
-  }
+  const workers = Math.min(limit, tasks.length);
+  await Promise.all(Array.from({ length: workers }, () => next()));
 }
 
 export async function GET(req: NextRequest): Promise<Response> {
@@ -112,10 +103,10 @@ export async function GET(req: NextRequest): Promise<Response> {
             indexerName: indexerQuery.indexerName,
           });
 
+          if (req.signal.aborted) return;
           const start = Date.now();
           try {
             const results = await searchIndexer(indexerQuery, req.signal);
-            if (req.signal.aborted) return;
             const durationMs = Date.now() - start;
             updateAffinity(indexerQuery.indexerId, results).catch(() => {});
             enqueue({
