@@ -139,6 +139,8 @@ export interface ResultFilters {
   codecs: VideoCodec[];
   sources: Source[];
   freeleechOnly: boolean;
+  hdrOnly: boolean;
+  knownGroupOnly: boolean;
   minSeeders: number;
 }
 
