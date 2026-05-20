@@ -38,6 +38,8 @@ dev-server.log
 
 # local agent/editor state
 .claude/
+.agents/
+.opencode/
 
 # vercel
 .vercel
