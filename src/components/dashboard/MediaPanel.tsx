@@ -39,9 +39,15 @@ export function MediaPanel({ media }: Props) {
   const [addError, setAddError] = useState<string | null>(null);
   const isTv = media.contentType === 'tv';
   const posterUrl = media.posterPath ? `${TMDB_IMAGE_BASE}/w185${media.posterPath}` : null;
-  const words = posterWords(media.title);
+
+  const canAdd = isTv ? !!media.tvdbId : !!media.tmdbId;
 
   const handleAdd = async () => {
+    if (!canAdd) {
+      setAddError('Missing external ID for Arr lookup.');
+      return;
+    }
+    if (!window.confirm(`Add "${media.title}" to ${isTv ? 'Sonarr' : 'Radarr'}?`)) return;
     setAdding(true);
     setAddError(null);
     try {
@@ -83,8 +89,9 @@ export function MediaPanel({ media }: Props) {
         }}
       >
         {posterUrl ? (
-          <Image src={posterUrl} alt={media.title} fill sizes="(max-width: 768px) 100vw, 300px" style={{ objectFit: 'cover' }} />
+          <Image src={posterUrl} alt={media.title} fill sizes="112px" style={{ objectFit: 'cover' }} />
         ) : null}
+        {!posterUrl && (
         <div className="ts-poster-chrome">
           <div className="ts-poster-stripes" />
           <div className="ts-poster-title">{mainWord}</div>
@@ -93,6 +100,7 @@ export function MediaPanel({ media }: Props) {
             {media.year} · TMDB {media.tmdbId}
           </div>
         </div>
+        )}
       </div>
 
       {/* Info */}
@@ -135,9 +143,11 @@ export function MediaPanel({ media }: Props) {
             )}
             {arrInfo?.status === 'not-in-library' && (
               <button
+                type="button"
                 className="ts-btn ts-btn-primary"
                 onClick={handleAdd}
-                disabled={adding}
+                disabled={adding || !canAdd}
+                title={canAdd ? undefined : 'Missing external ID'}
               >
                 {I.plus} Add to {isTv ? 'Sonarr' : 'Radarr'}
               </button>

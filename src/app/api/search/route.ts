@@ -21,8 +21,12 @@ async function runWithConcurrency<T>(
   const next = async (): Promise<void> => {
     const task = queue.shift();
     if (!task) return;
-    await task();
-    return next();
+    try {
+      await task();
+    } finally {
+      // Always drain the queue even if a task throws (callers swallow per-task errors).
+      await next();
+    }
   };
   const workers = Math.min(limit, tasks.length);
   await Promise.all(Array.from({ length: workers }, () => next()));
@@ -121,13 +125,14 @@ export async function GET(req: NextRequest): Promise<Response> {
               indexerName: indexerQuery.indexerName,
               durationMs,
             });
-          } catch (e) {
+          } catch {
             if (req.signal.aborted) return;
+            console.error(`[search] indexer failed: ${indexerQuery.indexerId}`);
             enqueue({
               type: 'indexer_error',
               indexerId: indexerQuery.indexerId,
               indexerName: indexerQuery.indexerName,
-              error: e instanceof Error ? e.message : 'Unknown error',
+              error: 'Indexer request failed',
               durationMs: Date.now() - start,
             });
           } finally {
@@ -141,12 +146,13 @@ export async function GET(req: NextRequest): Promise<Response> {
           enqueue({ type: 'search_complete', totalIndexers: total, completedIndexers: completed });
         }
       } catch (e) {
+        console.error('[search] fatal:', e);
         if (!req.signal.aborted) {
           enqueue({
             type: 'search_complete',
             totalIndexers: 0,
             completedIndexers: 0,
-            error: e instanceof Error ? e.message : String(e),
+            error: 'Search failed',
           });
         }
       }

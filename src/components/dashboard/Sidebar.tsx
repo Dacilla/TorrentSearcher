@@ -73,6 +73,9 @@ export function Sidebar({ collapsed, onToggle, checks }: Props) {
                   key={it.id}
                   type="button"
                   className={`ts-nav-item${active ? ' is-active' : ''}`}
+                  aria-label={it.label}
+                  aria-current={active ? 'page' : undefined}
+                  title={collapsed ? it.label : undefined}
                 >
                   <span className="ts-nav-icon">{it.icon}</span>
                   <span className="ts-nav-text">{it.label}</span>

@@ -62,7 +62,14 @@ export function TrackerRibbon({ trackerStatuses, isSearching, totalIndexers }: P
         </div>
       </div>
 
-      <div className="ts-tracker-bar">
+      <div
+        className="ts-tracker-bar"
+        role="progressbar"
+        aria-valuemin={0}
+        aria-valuemax={100}
+        aria-valuenow={pct}
+        aria-label="Search progress"
+      >
         <div className="ts-tracker-bar-fill" style={{ width: `${pct}%` }} />
       </div>
 
@@ -103,7 +110,7 @@ export function TrackerRibbon({ trackerStatuses, isSearching, totalIndexers }: P
                     `${t.resultCount ?? 0} hits`
                   )}
                 </span>
-                <div className="ts-trk-spark">
+                <div className="ts-trk-spark" aria-hidden="true">
                   {sparkHeights.map((h, k) => (
                     <span key={k} style={{ height: `${h}px` }} />
                   ))}

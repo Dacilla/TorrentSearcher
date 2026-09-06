@@ -5,17 +5,25 @@ import { ContentType, MediaInfo } from '@/types';
 import { parseContentType } from '@/lib/http/validation';
 
 export async function POST(req: NextRequest): Promise<NextResponse> {
+  let body: unknown;
   try {
-    const { query, contentType } = (await req.json()) as { query: string; contentType?: ContentType };
-    if (!query?.trim()) {
+    body = await req.json();
+  } catch {
+    return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 });
+  }
+  try {
+    const { query, contentType } = (body ?? {}) as { query?: unknown; contentType?: ContentType };
+    if (typeof query !== 'string' || !query.trim()) {
       return NextResponse.json({ error: 'query required' }, { status: 400 });
+    }
+    if (query.length > 200) {
+      return NextResponse.json({ error: 'query too long' }, { status: 400 });
     }
 
     const detected = detectContentType(query);
-    const hintType = parseContentType(contentType) !== 'unknown'
-      ? parseContentType(contentType)
-      : detected.type;
-    const mediaInfo: MediaInfo | null = await searchMedia(detected.cleanQuery, hintType);
+    const hintType = parseContentType(typeof contentType === 'string' ? contentType : undefined);
+    const effectiveType = hintType !== 'unknown' ? hintType : detected.type;
+    const mediaInfo: MediaInfo | null = await searchMedia(detected.cleanQuery, effectiveType);
 
     return NextResponse.json({
       detected,
@@ -23,9 +31,6 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     });
   } catch (e) {
     console.error('[/api/resolve]', e);
-    return NextResponse.json(
-      { error: e instanceof Error ? e.message : 'resolve failed' },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: 'lookup failed' }, { status: 500 });
   }
 }

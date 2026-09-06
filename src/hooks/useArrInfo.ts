@@ -36,6 +36,10 @@ const initialState: State = { arrInfo: null, error: null };
 
 export function useArrInfo(mediaInfo: MediaInfo | null) {
   const [state, dispatch] = useReducer(reducer, initialState);
+  // Deps on stable IDs, not object identity (avoids refetch loops).
+  const tmdbId = mediaInfo?.tmdbId;
+  const tvdbId = mediaInfo?.tvdbId;
+  const contentType = mediaInfo?.contentType;
 
   useEffect(() => {
     if (!mediaInfo) {
@@ -44,14 +48,15 @@ export function useArrInfo(mediaInfo: MediaInfo | null) {
     }
 
     let cancelled = false;
-    const isTv = mediaInfo.contentType === 'tv';
+    const controller = new AbortController();
+    const isTv = contentType === 'tv';
 
     dispatch({ type: 'start' });
 
-    const url = isTv && mediaInfo.tvdbId
-      ? `/api/sonarr/status?tvdbId=${mediaInfo.tvdbId}`
-      : !isTv && mediaInfo.tmdbId
-        ? `/api/radarr/status?tmdbId=${mediaInfo.tmdbId}`
+    const url = isTv && tvdbId
+      ? `/api/sonarr/status?tvdbId=${tvdbId}`
+      : !isTv && tmdbId
+        ? `/api/radarr/status?tmdbId=${tmdbId}`
         : null;
 
     if (!url) {
@@ -59,13 +64,20 @@ export function useArrInfo(mediaInfo: MediaInfo | null) {
       return;
     }
 
-    fetch(url)
-      .then((r) => r.json())
+    fetch(url, { signal: controller.signal, cache: 'no-store' })
+      .then((r) => {
+        if (!r.ok) throw new Error(`status ${r.status}`);
+        return r.json();
+      })
       .then((d) => { if (!cancelled) dispatch({ type: 'loaded', data: d as ArrInfo }); })
-      .catch(() => { if (!cancelled) dispatch({ type: 'error' }); });
+      .catch((e) => {
+        if (cancelled) return;
+        if (e instanceof DOMException && e.name === 'AbortError') return;
+        dispatch({ type: 'error' });
+      });
 
-    return () => { cancelled = true; };
-  }, [mediaInfo]);
+    return () => { cancelled = true; controller.abort(); };
+  }, [mediaInfo, tmdbId, tvdbId, contentType]);
 
   return {
     arrInfo: state.arrInfo,

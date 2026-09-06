@@ -6,22 +6,53 @@ export type ValidationResult<T> =
 
 const CONTENT_TYPES = new Set<ContentType>(['movie', 'tv', 'unknown']);
 
+const MAX_QUERY_LEN = 200;
+const MAX_TITLE_LEN = 300;
+const MAX_CODEC_LEN = 16;
+const VALID_CODECS = new Set(['AV1', 'HEVC', 'x264', 'x265', 'VC1', 'unknown']);
+const IMDB_RE = /^tt\d{7,9}$/;
+
+function parseStrictInt(value: string): number | undefined {
+  const t = value.trim();
+  if (!/^-?\d+$/.test(t)) return undefined;
+  const n = Number(t);
+  return Number.isSafeInteger(n) ? n : undefined;
+}
+
+function parseBoundedInt(
+  value: string | null,
+  min: number,
+  max: number
+): number | undefined {
+  if (!value) return undefined;
+  const n = parseStrictInt(value);
+  if (n === undefined || n < min || n > max) return undefined;
+  return n;
+}
+
 export function parseContentType(value: string | null | undefined): ContentType {
   return value && CONTENT_TYPES.has(value as ContentType) ? (value as ContentType) : 'unknown';
 }
 
 export function parseOptionalInt(value: string | null): number | undefined {
   if (!value) return undefined;
-  const parsed = Number.parseInt(value, 10);
-  return Number.isFinite(parsed) ? parsed : undefined;
+  return parseStrictInt(value);
 }
 
 export function parseRequiredPositiveInt(
   value: unknown,
   field: string
 ): ValidationResult<number> {
-  const parsed = typeof value === 'number' ? value : Number.parseInt(String(value ?? ''), 10);
-  if (!Number.isInteger(parsed) || parsed <= 0) {
+  const raw = typeof value === 'number' ? String(value) : String(value ?? '');
+  // Numbers must be integers; strings must be strict integer text (no trailing garbage/floats).
+  if (typeof value === 'number') {
+    if (!Number.isInteger(value) || value <= 0) {
+      return { ok: false, error: `${field} must be a positive integer`, status: 400 };
+    }
+    return { ok: true, value };
+  }
+  const parsed = parseStrictInt(raw);
+  if (parsed === undefined || parsed <= 0) {
     return { ok: false, error: `${field} must be a positive integer`, status: 400 };
   }
   return { ok: true, value: parsed };
@@ -41,23 +72,37 @@ export function parseSearchParams(sp: URLSearchParams): ValidationResult<{
 }> {
   const query = (sp.get('q') ?? '').trim();
   if (!query) return { ok: false, error: 'Search query is required', status: 400 };
+  if (query.length > MAX_QUERY_LEN) return { ok: false, error: `Search query must be ≤ ${MAX_QUERY_LEN} chars`, status: 400 };
 
-  const tmdbId = parseOptionalInt(sp.get('tmdbId'));
-  const tvdbId = parseOptionalInt(sp.get('tvdbId'));
-  const year = parseOptionalInt(sp.get('year'));
+  const tmdbId = parseBoundedInt(sp.get('tmdbId'), 1, 999_999_999);
+  const tvdbId = parseBoundedInt(sp.get('tvdbId'), 1, 999_999_999);
+  const year = parseBoundedInt(sp.get('year'), 1880, 2100);
+  const season = parseBoundedInt(sp.get('season'), 0, 100);
+  const episode = parseBoundedInt(sp.get('episode'), 0, 366);
+
+  const rawCodec = sp.get('codec') ?? undefined;
+  const wantedCodec = rawCodec && rawCodec.length <= MAX_CODEC_LEN && VALID_CODECS.has(rawCodec)
+    ? rawCodec
+    : rawCodec ? undefined : undefined;
+
+  const rawImdb = sp.get('imdbId') ?? undefined;
+  const imdbId = rawImdb && IMDB_RE.test(rawImdb.trim()) ? rawImdb.trim() : rawImdb ? undefined : undefined;
+
+  const rawTitle = sp.get('title') ?? undefined;
+  const title = rawTitle && rawTitle.length > MAX_TITLE_LEN ? rawTitle.slice(0, MAX_TITLE_LEN) : rawTitle;
 
   return {
     ok: true,
     value: {
       query,
       contentType: parseContentType(sp.get('contentType')),
-      season: parseOptionalInt(sp.get('season')),
-      episode: parseOptionalInt(sp.get('episode')),
-      wantedCodec: sp.get('codec') ?? undefined,
+      season,
+      episode,
+      wantedCodec,
       tmdbId,
-      imdbId: sp.get('imdbId') ?? undefined,
+      imdbId,
       tvdbId,
-      title: sp.get('title') ?? undefined,
+      title,
       year,
     },
   };

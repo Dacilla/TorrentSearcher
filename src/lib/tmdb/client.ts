@@ -1,5 +1,6 @@
 import { MediaInfo, ContentType } from '@/types';
 import { requireEnv } from '@/lib/config/env';
+import { fetchWithTimeout } from '@/lib/http/fetch';
 
 const TMDB_BASE = 'https://api.themoviedb.org/3';
 export const TMDB_IMAGE_BASE = 'https://image.tmdb.org/t/p';
@@ -9,7 +10,7 @@ async function tmdbFetch<T>(path: string, params: Record<string, string> = {}): 
   const url = new URL(`${TMDB_BASE}${path}`);
   url.searchParams.set('api_key', TMDB_KEY);
   for (const [k, v] of Object.entries(params)) url.searchParams.set(k, v);
-  const res = await fetch(url.toString());
+  const res = await fetchWithTimeout(url.toString(), {}, 10_000);
   if (!res.ok) throw new Error(`TMDB ${path} → ${res.status}`);
   return res.json() as Promise<T>;
 }

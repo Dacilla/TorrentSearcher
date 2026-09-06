@@ -12,12 +12,12 @@ This app is designed for trusted local or self-hosted networks. Do not expose it
 - Resolves TMDB metadata and TVDB/IMDB IDs for more precise tracker queries.
 - Shows Sonarr/Radarr library status and protects Add actions with same-origin CSRF checks.
 - Groups duplicate releases while preserving alternate tracker sources.
-- Filters by resolution, codec, source, freeleech, and minimum seeders.
+- Filters by resolution, codec, source, freeleech, HDR/DV, trusted groups, and minimum seeders.
 - Stores search/filter/sort state in the URL for refresh and sharing.
 
 ## Requirements
 
-- Node.js compatible with Next `16.2.4`.
+- Node.js `>=20` (see `engines` in `package.json`).
 - A reachable Jackett instance with configured Torznab indexers.
 - A TMDB API key.
 - Optional Sonarr and Radarr instances for library status and Add actions.
@@ -79,16 +79,17 @@ If you deploy somewhere with ephemeral or read-only filesystems, replace the loc
 The repository is configured to exclude local-only files:
 
 - `.env` and other environment files with secrets.
-- `.claude/` and `.playwright-mcp/` local agent/browser state.
+- `.claude/`, `.agents/`, `.opencode/` and `.playwright-mcp/` local agent/browser state.
 - `.next/`, `node_modules/`, `coverage/`, TypeScript build info, and debug logs.
 - Runtime cache JSON files under `data/`.
 - Root-level manual screenshot captures used during local testing.
+- `.vercel` and `*.pem` (see `.gitignore` as source of truth).
 
 Use `.env.example` as the public template for required configuration.
 
 ## Troubleshooting
 
-- **No results:** check `/api/config?check=true`, confirm Jackett is reachable, and refresh indexer capabilities from `/api/indexers?refresh=true`.
+- **No results:** check `/api/config?check=true`, confirm Jackett is reachable, and refresh indexer capabilities with `POST /api/indexers` (same-origin CSRF token required).
 - **Wrong TV/movie detection:** use the TV/Movie override under the search box before submitting.
 - **Arr unavailable:** confirm `SONARR_URL`, `SONARR_API_KEY`, `RADARR_URL`, and `RADARR_API_KEY`, and verify those services are reachable from the Next.js server.
 - **Add fails:** the app needs a configured quality profile and root folder in Sonarr/Radarr. The route chooses the first configured values unless explicit values are posted.

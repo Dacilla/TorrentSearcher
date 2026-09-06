@@ -1,7 +1,6 @@
 @import "tailwindcss" source(none);
 @source "../**/*.{ts,tsx}";
 @import "tw-animate-css";
-@import "shadcn/tailwind.css";
 
 @custom-variant dark (&:is(.dark *));
 
@@ -182,7 +181,7 @@
 
 html, body { height: 100%; margin: 0; }
 
-.ts-app button { font: inherit; color: inherit; background: none; border: 0; cursor: pointer; }
+.ts-app button:not([data-slot]) { font: inherit; color: inherit; background: none; border: 0; cursor: pointer; }
 .ts-app kbd {
   font-family: var(--ff-mono);
   font-size: 10px;
@@ -202,7 +201,9 @@ html, body { height: 100%; margin: 0; }
   grid-template-rows: 56px 1fr 28px;
   grid-template-areas: "side top" "side main" "side status";
   height: 100vh;
+  height: 100dvh;
   width: 100vw;
+  max-width: 100%;
   overflow: hidden;
   font-family: var(--ff-sans);
   font-size: 13px;
@@ -1175,4 +1176,57 @@ html, body { height: 100%; margin: 0; }
   background: var(--bg-4);
   background-clip: padding-box;
   border: 2px solid transparent;
+}
+
+/* Focus visibility */
+.ts-row:focus-visible,
+.ts-fg-row:focus-visible,
+.ts-th:focus-visible,
+.ts-nav-item:focus-visible,
+.ts-search-input:focus-visible,
+.ts-btn:focus-visible,
+.ts-iconbtn:focus-visible {
+  outline: 2px solid var(--acc);
+  outline-offset: 2px;
+}
+
+/* Reduced motion */
+@media (prefers-reduced-motion: reduce) {
+  .ts-spin svg,
+  .ts-trk-dots i {
+    animation: none;
+  }
+  .ts-tracker-bar-fill,
+  .ts-trk-spark span,
+  .ts-row {
+    transition: none;
+  }
+}
+
+/* Responsive: collapse rails into stacked layout */
+@media (max-width: 1100px) {
+  .ts-main {
+    grid-template-columns: 200px minmax(0, 1fr);
+    grid-template-areas:
+      "filters media"
+      "filters tracker"
+      "filters results";
+  }
+  .ts-area-inspector { display: none; }
+}
+@media (max-width: 760px) {
+  .ts-app {
+    grid-template-columns: 1fr;
+    grid-template-areas: "top" "main" "status";
+  }
+  .ts-sidebar { display: none; }
+  .ts-main {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas: "media" "tracker" "results" "filters";
+    overflow-y: auto;
+  }
+  .ts-area-filters,
+  .ts-area-results,
+  .ts-area-inspector { overflow: visible; }
+  .ts-top-stats { display: none; }
 }

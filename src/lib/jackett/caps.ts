@@ -1,28 +1,33 @@
 import { XMLParser } from 'fast-xml-parser';
 import { IndexerCapabilities } from '@/types';
 import { requireEnv } from '@/lib/config/env';
+import { fetchWithTimeout, normalizeBaseUrl } from '@/lib/http/fetch';
 
 const parser = new XMLParser({
   ignoreAttributes: false,
   attributeNamePrefix: '@_',
   isArray: (name) => name === 'indexer' || name === 'category' || name === 'subcat',
+  processEntities: false,
 });
+
+const MAX_CAPS_BYTES = 5 * 1024 * 1024;
 
 /**
  * Fetches all configured indexers AND their caps in a single call via
  * the Torznab ?t=indexers endpoint (avoids the cookie-locked REST API).
  */
 export async function fetchAllCapsFromTorznab(): Promise<IndexerCapabilities[]> {
-  const JACKETT_URL = requireEnv('JACKETT_URL', 'Jackett');
+  const JACKETT_URL = normalizeBaseUrl(requireEnv('JACKETT_URL', 'Jackett'));
   const JACKETT_KEY = requireEnv('JACKETT_API_KEY', 'Jackett');
   const url = new URL(`${JACKETT_URL}/api/v2.0/indexers/all/results/torznab/api`);
   url.searchParams.set('apikey', JACKETT_KEY);
   url.searchParams.set('t', 'indexers');
   url.searchParams.set('configured', 'true');
 
-  const res = await fetch(url.toString());
+  const res = await fetchWithTimeout(url.toString(), { headers: { Accept: 'text/xml' } });
   if (!res.ok) throw new Error(`Jackett indexers → ${res.status}`);
   const xml = await res.text();
+  if (xml.length > MAX_CAPS_BYTES) throw new Error('Jackett caps payload too large');
   return parseTorznabIndexers(xml);
 }
 

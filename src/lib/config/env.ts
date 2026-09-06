@@ -25,6 +25,18 @@ export function getEnv(name: string): string | undefined {
   return value && value.trim() ? value.trim() : undefined;
 }
 
+export function getValidatedUrl(name: string): string | undefined {
+  const v = getEnv(name);
+  if (!v) return undefined;
+  try {
+    const u = new URL(v);
+    if (u.protocol !== 'http:' && u.protocol !== 'https:') return undefined;
+    return v.replace(/\/+$/, '');
+  } catch {
+    return undefined;
+  }
+}
+
 export function requireEnv(name: string, serviceLabel: string): string {
   const value = getEnv(name);
   if (!value) {

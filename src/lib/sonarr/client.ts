@@ -1,12 +1,13 @@
 import { ArrInfo } from '@/types';
 import { requireEnv } from '@/lib/config/env';
+import { fetchWithTimeout, normalizeBaseUrl } from '@/lib/http/fetch';
 
 async function sonarrFetch<T>(path: string, params: Record<string, string> = {}): Promise<T> {
-  const SONARR_URL = requireEnv('SONARR_URL', 'Sonarr');
+  const SONARR_URL = normalizeBaseUrl(requireEnv('SONARR_URL', 'Sonarr'));
   const SONARR_KEY = requireEnv('SONARR_API_KEY', 'Sonarr');
   const url = new URL(`${SONARR_URL}/api/v3${path}`);
   for (const [k, v] of Object.entries(params)) url.searchParams.set(k, v);
-  const res = await fetch(url.toString(), {
+  const res = await fetchWithTimeout(url.toString(), {
     headers: { 'X-Api-Key': SONARR_KEY },
   });
   if (!res.ok) throw new Error(`Sonarr ${path} → ${res.status}`);
@@ -44,7 +45,8 @@ export async function getSeriesStatus(tvdbId: number): Promise<ArrInfo> {
       status: s.monitored ? 'monitored' : 'unmonitored',
       missingEpisodes: missing && missing > 0 ? missing : undefined,
     };
-  } catch {
+  } catch (e) {
+    console.error('[sonarr] getSeriesStatus failed:', e);
     return { status: 'error' };
   }
 }
@@ -54,7 +56,7 @@ export async function lookupSeries(term: string): Promise<SonarrSeries[]> {
 }
 
 export async function addSeries(tvdbId: number, qualityProfileId: number, rootFolderPath: string): Promise<void> {
-  const SONARR_URL = requireEnv('SONARR_URL', 'Sonarr');
+  const SONARR_URL = normalizeBaseUrl(requireEnv('SONARR_URL', 'Sonarr'));
   const SONARR_KEY = requireEnv('SONARR_API_KEY', 'Sonarr');
   const lookup = await sonarrFetch<SonarrSeries[]>('/series/lookup', {
     term: `tvdb:${tvdbId}`,
@@ -70,7 +72,7 @@ export async function addSeries(tvdbId: number, qualityProfileId: number, rootFo
     addOptions: { searchForMissingEpisodes: true },
   };
 
-  const res = await fetch(`${SONARR_URL}/api/v3/series`, {
+  const res = await fetchWithTimeout(`${SONARR_URL}/api/v3/series`, {
     method: 'POST',
     headers: { 'X-Api-Key': SONARR_KEY, 'Content-Type': 'application/json' },
     body: JSON.stringify(body),

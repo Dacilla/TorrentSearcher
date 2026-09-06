@@ -1,12 +1,13 @@
 import { ArrInfo } from '@/types';
 import { requireEnv } from '@/lib/config/env';
+import { fetchWithTimeout, normalizeBaseUrl } from '@/lib/http/fetch';
 
 async function radarrFetch<T>(path: string, params: Record<string, string> = {}): Promise<T> {
-  const RADARR_URL = requireEnv('RADARR_URL', 'Radarr');
+  const RADARR_URL = normalizeBaseUrl(requireEnv('RADARR_URL', 'Radarr'));
   const RADARR_KEY = requireEnv('RADARR_API_KEY', 'Radarr');
   const url = new URL(`${RADARR_URL}/api/v3${path}`);
   for (const [k, v] of Object.entries(params)) url.searchParams.set(k, v);
-  const res = await fetch(url.toString(), {
+  const res = await fetchWithTimeout(url.toString(), {
     headers: { 'X-Api-Key': RADARR_KEY },
   });
   if (!res.ok) throw new Error(`Radarr ${path} → ${res.status}`);
@@ -30,7 +31,8 @@ export async function getMovieStatus(tmdbId: number): Promise<ArrInfo> {
     }
     const m = movies[0];
     return { status: m.monitored ? 'monitored' : 'unmonitored' };
-  } catch {
+  } catch (e) {
+    console.error('[radarr] getMovieStatus failed:', e);
     return { status: 'error' };
   }
 }
@@ -40,7 +42,7 @@ export async function lookupMovie(term: string): Promise<RadarrMovie[]> {
 }
 
 export async function addMovie(tmdbId: number, qualityProfileId: number, rootFolderPath: string): Promise<void> {
-  const RADARR_URL = requireEnv('RADARR_URL', 'Radarr');
+  const RADARR_URL = normalizeBaseUrl(requireEnv('RADARR_URL', 'Radarr'));
   const RADARR_KEY = requireEnv('RADARR_API_KEY', 'Radarr');
   const lookup = await radarrFetch<RadarrMovie[]>('/movie/lookup', {
     term: `tmdb:${tmdbId}`,
@@ -56,7 +58,7 @@ export async function addMovie(tmdbId: number, qualityProfileId: number, rootFol
     addOptions: { searchForMovie: true },
   };
 
-  const res = await fetch(`${RADARR_URL}/api/v3/movie`, {
+  const res = await fetchWithTimeout(`${RADARR_URL}/api/v3/movie`, {
     method: 'POST',
     headers: { 'X-Api-Key': RADARR_KEY, 'Content-Type': 'application/json' },
     body: JSON.stringify(body),

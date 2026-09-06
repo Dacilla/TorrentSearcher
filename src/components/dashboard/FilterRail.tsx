@@ -84,8 +84,10 @@ function FilterGroup({ label, items, active, onToggle, accent }: GroupProps) {
           return (
             <button
               key={v}
+              type="button"
               className={`ts-fg-row${on ? ' is-on' : ''}`}
               onClick={() => onToggle(v)}
+              aria-pressed={on}
             >
               <span className="ts-fg-check">{on ? I.check : null}</span>
               <span className="ts-fg-name">
@@ -117,7 +119,7 @@ export function FilterRail({ filters, setFilters, counts, onReset }: Props) {
       {/* Min seeders */}
       <div className="ts-fg">
         <div className="ts-fg-head">
-          <span>Min seeders</span>
+          <span id="min-seeders-label">Min seeders</span>
           <span className="ts-fg-count">{filters.minSeeders}</span>
         </div>
         <input
@@ -126,6 +128,7 @@ export function FilterRail({ filters, setFilters, counts, onReset }: Props) {
           max="500"
           step="10"
           value={filters.minSeeders}
+          aria-labelledby="min-seeders-label"
           onChange={(e) =>
             setFilters((f) => ({ ...f, minSeeders: Number(e.target.value) }))
           }
@@ -193,7 +196,7 @@ export function FilterRail({ filters, setFilters, counts, onReset }: Props) {
       {counts.sizeHist.some((h) => h > 0) && (
         <div className="ts-fg">
           <div className="ts-fg-head"><span>Distribution</span></div>
-          <div className="ts-hist">
+          <div className="ts-hist" aria-hidden="true">
             {counts.sizeHist.map((h, idx) => {
               const bucketKey = `size-hist-${idx}`;
               return (
@@ -206,7 +209,7 @@ export function FilterRail({ filters, setFilters, counts, onReset }: Props) {
               );
             })}
           </div>
-          <div className="ts-hist-axis">
+          <div className="ts-hist-axis" aria-hidden="true">
             <span>&lt;1GB</span><span>10GB</span><span>50GB+</span>
           </div>
         </div>

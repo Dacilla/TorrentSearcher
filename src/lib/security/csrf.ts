@@ -29,10 +29,17 @@ export function validateSameOriginCsrf(req: NextRequest): NextResponse | null {
 
   const token = req.headers.get(CSRF_HEADER);
   const cookie = req.cookies.get(CSRF_COOKIE)?.value;
-  if (!token || !cookie || token !== cookie) {
+  if (!token || !cookie || !timingSafeCompare(token, cookie)) {
     return NextResponse.json({ error: 'Write token missing or expired' }, { status: 403 });
   }
 
   return null;
+}
+
+function timingSafeCompare(a: string, b: string): boolean {
+  const ba = Buffer.from(a, 'utf-8');
+  const bb = Buffer.from(b, 'utf-8');
+  if (ba.length !== bb.length) return false;
+  return crypto.timingSafeEqual(ba, bb);
 }
 

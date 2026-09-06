@@ -48,20 +48,28 @@ export function filterAndSortResults(
     list = list.filter((r) => r.seeders >= filters.minSeeders);
   }
 
+  // Precompute scores once (avoids O(n log n) rescoring in comparator).
+  const scoreMap = sort === 'score' ? new Map(list.map((r) => [r.id, scoreTorrent(r)])) : null;
+
   return list.toSorted((a, b) => {
     switch (sort) {
       case 'seeders':
         return b.seeders - a.seeders;
       case 'leechers':
         return b.leechers - a.leechers;
-      case 'date':
-        return new Date(b.publishDate).getTime() - new Date(a.publishDate).getTime();
+      case 'date': {
+        const ta = new Date(b.publishDate).getTime();
+        const tb = new Date(a.publishDate).getTime();
+        const va = Number.isFinite(ta) ? ta : 0;
+        const vb = Number.isFinite(tb) ? tb : 0;
+        return va - vb;
+      }
       case 'size':
         return b.size - a.size;
       case 'resolution':
         return resolutionRank(a.releaseInfo.resolution) - resolutionRank(b.releaseInfo.resolution);
       case 'score':
-        return scoreTorrent(b) - scoreTorrent(a);
+        return (scoreMap?.get(b.id) ?? 0) - (scoreMap?.get(a.id) ?? 0);
       case 'title':
         return a.title.localeCompare(b.title);
       case 'indexer':
@@ -140,7 +148,7 @@ export function useFilters(
     availableCodecs,
     availableSources,
     freeleechCount,
-    resetFilters: () => setFilters(DEFAULT_FILTERS),
+    resetFilters: () => setFilters({ ...DEFAULT_FILTERS }),
   };
 }
 

@@ -30,34 +30,39 @@ export function selectIndexers(
   const queries: IndexerQuery[] = eligible.map((indexer) => {
     const qParams: Record<string, string> = {};
     const categories: number[] = [];
+    const tvSearchParams = indexer.supportedParams?.tvSearch ?? [];
+    const movieSearchParams = indexer.supportedParams?.movieSearch ?? [];
+    const searchModes = indexer.searchModes ?? { basic: true, 'tv-search': false, 'movie-search': false };
+    const indexerCats = Array.isArray(indexer.categories) ? indexer.categories : [];
 
-    if (contentType === 'tv' && indexer.searchModes['tv-search']) {
+    if (contentType === 'tv' && searchModes['tv-search']) {
       qParams.t = 'tvsearch';
 
       // Build category list from indexer's supported TV categories
-      const supportedTV = TV_CATS.filter((c) => indexer.categories.includes(c));
+      const supportedTV = TV_CATS.filter((c) => indexerCats.includes(c));
       categories.push(...(supportedTV.length > 0 ? supportedTV : TV_CATS));
 
       // ID-based search params
-      if (mediaInfo?.tvdbId && indexer.supportedParams.tvSearch.includes('tvdbid')) {
+      if (mediaInfo?.tvdbId && tvSearchParams.includes('tvdbid')) {
         qParams.tvdbid = String(mediaInfo.tvdbId);
-      } else if (mediaInfo?.imdbId && indexer.supportedParams.tvSearch.includes('imdbid')) {
+      } else if (mediaInfo?.imdbId && tvSearchParams.includes('imdbid')) {
         qParams.imdbid = mediaInfo.imdbId;
       } else {
         qParams.q = query;
       }
 
       if (season !== undefined) qParams.season = String(season);
-      if (episode !== undefined) qParams.ep = String(episode);
-    } else if (contentType === 'movie' && indexer.searchModes['movie-search']) {
+      // Some trackers reject ep without season.
+      if (episode !== undefined && season !== undefined) qParams.ep = String(episode);
+    } else if (contentType === 'movie' && searchModes['movie-search']) {
       qParams.t = 'movie';
 
-      const supportedMovies = MOVIE_CATS.filter((c) => indexer.categories.includes(c));
+      const supportedMovies = MOVIE_CATS.filter((c) => indexerCats.includes(c));
       categories.push(...(supportedMovies.length > 0 ? supportedMovies : MOVIE_CATS));
 
-      if (mediaInfo?.imdbId && indexer.supportedParams.movieSearch.includes('imdbid')) {
+      if (mediaInfo?.imdbId && movieSearchParams.includes('imdbid')) {
         qParams.imdbid = mediaInfo.imdbId;
-      } else if (mediaInfo?.tmdbId && indexer.supportedParams.movieSearch.includes('tmdbid')) {
+      } else if (mediaInfo?.tmdbId && movieSearchParams.includes('tmdbid')) {
         qParams.tmdbid = String(mediaInfo.tmdbId);
       } else {
         qParams.q = query;
@@ -68,10 +73,10 @@ export function selectIndexers(
       qParams.q = query;
 
       if (contentType === 'tv') {
-        const supportedTV = TV_CATS.filter((c) => indexer.categories.includes(c));
+        const supportedTV = TV_CATS.filter((c) => indexerCats.includes(c));
         categories.push(...(supportedTV.length > 0 ? supportedTV : TV_CATS));
       } else if (contentType === 'movie') {
-        const supportedMovies = MOVIE_CATS.filter((c) => indexer.categories.includes(c));
+        const supportedMovies = MOVIE_CATS.filter((c) => indexerCats.includes(c));
         categories.push(...(supportedMovies.length > 0 ? supportedMovies : MOVIE_CATS));
       }
     }
@@ -80,18 +85,25 @@ export function selectIndexers(
       indexerId: indexer.indexerId,
       indexerName: indexer.displayName,
       params: qParams,
-      categories: categories.length > 0 ? categories : [...TV_CATS, ...MOVIE_CATS],
+      // For unknown type omit cat (broad search) instead of 20-cat fan-out.
+      categories,
     };
   });
 
   // ── Step 3: Affinity sort (codec preference) ────────────────────────────────
   if (wantedCodec) {
+    const want = wantedCodec.toUpperCase();
     const affinityMap = new Map(affinityCache.map((a) => [a.indexerId, a]));
-    queries.sort((a, b) => {
-      const scoreA = affinityMap.get(a.indexerId)?.codecScores[wantedCodec] ?? 0;
-      const scoreB = affinityMap.get(b.indexerId)?.codecScores[wantedCodec] ?? 0;
-      return scoreB - scoreA;
-    });
+    const scoreFor = (id: string): number => {
+      const entry = affinityMap.get(id);
+      if (!entry) return 0;
+      // Case-insensitive codec lookup.
+      for (const [k, v] of Object.entries(entry.codecScores)) {
+        if (k.toUpperCase() === want) return v;
+      }
+      return 0;
+    };
+    queries.sort((a, b) => scoreFor(b.indexerId) - scoreFor(a.indexerId));
   }
 
   return queries;

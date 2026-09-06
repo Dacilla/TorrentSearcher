@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react';
 import { useSearch } from '@/hooks/useSearch';
 import { DEFAULT_FILTERS, SortKey, useFilters } from '@/hooks/useFilters';
-import { useConfig, ConfigState } from '@/hooks/useConfig';
+import { useConfig } from '@/hooks/useConfig';
 import { ContentType, ResultFilters } from '@/types';
 import { detectContentType } from '@/lib/detection/contentType';
 
@@ -33,7 +33,7 @@ function readCsv<T extends string>(v: string | null): T[] {
 
 function readInitialState() {
   if (typeof window === 'undefined') {
-    return { query: '', contentType: 'unknown' as ContentType, sort: 'score' as SortKey, filters: DEFAULT_FILTERS };
+    return { query: '', contentType: 'unknown' as ContentType, sort: 'score' as SortKey, filters: { ...DEFAULT_FILTERS } };
   }
   const sp = new URLSearchParams(window.location.search);
   return {
@@ -46,6 +46,8 @@ function readInitialState() {
       codecs: readCsv(sp.get('codec')),
       sources: readCsv(sp.get('source')),
       freeleechOnly: sp.get('freeleech') === 'true',
+      hdrOnly: sp.get('hdr') === 'true',
+      knownGroupOnly: sp.get('trusted') === 'true',
       minSeeders: parseInt(sp.get('seeders') ?? '0', 10) || 0,
     } as ResultFilters,
   };
@@ -61,14 +63,16 @@ function replaceUrl(query: string, contentType: ContentType, sort: SortKey, filt
   if (filters.codecs.length) sp.set('codec', filters.codecs.join(','));
   if (filters.sources.length) sp.set('source', filters.sources.join(','));
   if (filters.freeleechOnly) sp.set('freeleech', 'true');
+  if (filters.hdrOnly) sp.set('hdr', 'true');
+  if (filters.knownGroupOnly) sp.set('trusted', 'true');
   if (filters.minSeeders > 0) sp.set('seeders', String(filters.minSeeders));
   window.history.replaceState(null, '', sp.toString() ? `?${sp.toString()}` : window.location.pathname);
 }
 
 export default function HomePage() {
-  const initial = useMemo(readInitialState, []);
+  const initial = useMemo(() => readInitialState(), []);
 
-  const { state, mediaInfo, results, trackerStatuses, totalIndexers, completedIndexers, error, search, reset } = useSearch();
+  const { state, mediaInfo, results, trackerStatuses, totalIndexers, error, search, reset } = useSearch();
 
   const { filters, setFilters, sort, setSort, filteredResults, resetFilters } = useFilters(
     results,
@@ -89,20 +93,19 @@ export default function HomePage() {
   const sidebarCollapsed = sidebar.collapsed;
   const density = sidebar.density;
   const toggleSidebar = useCallback(() => dispatchSidebar({ type: 'toggle' }), []);
-  const setDensity = useCallback((v: Density) => dispatchSidebar({ type: 'setDensity', density: v }), []);
   const config = useConfig();
   const hasAutoSearchedRef = useRef(false);
 
   const isSearching = state === 'searching' || state === 'resolving';
   const counts = useMemo(() => computeFilterCounts(results), [results]);
 
-  const freeleechCount = useMemo(
-    () => results.filter((r) => r.releaseInfo.isFreeleech).length,
-    [results]
-  );
+  const freeleechCount = counts.freeleech;
 
-  const trackersUp = trackerStatuses.filter((t) => t.state === 'done').length;
-  const elapsed = trackerStatuses.reduce((m, t) => Math.max(m, t.durationMs ?? 0), 0) / 1000;
+  const trackersUp = useMemo(() => trackerStatuses.filter((t) => t.state === 'done').length, [trackerStatuses]);
+  const elapsed = useMemo(
+    () => trackerStatuses.reduce((m, t) => Math.max(m, t.durationMs ?? 0), 0) / 1000,
+    [trackerStatuses]
+  );
 
   const selectedResult = useMemo(
     () => filteredResults.find((r) => r.id === selected) ?? null,
@@ -142,7 +145,13 @@ export default function HomePage() {
   // Keyboard shortcut: / to focus search
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
-      if (e.key === '/' && !(e.target instanceof HTMLInputElement)) {
+      const target = e.target as HTMLElement | null;
+      const isEditable = !!target && (
+        target instanceof HTMLInputElement ||
+        target instanceof HTMLTextAreaElement ||
+        target.isContentEditable
+      );
+      if (e.key === '/' && !isEditable) {
         e.preventDefault();
         document.querySelector<HTMLInputElement>('.ts-search-input')?.focus();
       }
@@ -150,6 +159,20 @@ export default function HomePage() {
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
   }, []);
+
+  // Keep back/forward navigation in sync (URL is source of truth for q/type/sort).
+  useEffect(() => {
+    const onPop = () => {
+      const sp = new URLSearchParams(window.location.search);
+      const q = sp.get('q') ?? '';
+      setQuery(q);
+      setContentType(validContentType(sp.get('contentType')));
+      setSort(validSort(sp.get('sort')));
+      if (q.trim()) runSearch(q, validContentType(sp.get('contentType')));
+    };
+    window.addEventListener('popstate', onPop);
+    return () => window.removeEventListener('popstate', onPop);
+  }, [runSearch, setSort]);
 
   const sortState = useMemo(
     () => ({ key: sort, dir: 'desc' as const }),
@@ -185,6 +208,15 @@ export default function HomePage() {
       />
 
       <div className="ts-main" data-layout="dashboard">
+        {error && (
+          <div className="ts-area-error" role="alert" style={{ gridColumn: '1 / -1', padding: '8px 18px 0' }}>
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center', background: 'var(--warn-soft)', border: '1px solid var(--warn)', borderRadius: 6, padding: '8px 12px', fontSize: 12 }}>
+              <span style={{ flex: 1 }}>{error}</span>
+              <button type="button" className="ts-btn ts-btn-ghost" onClick={() => runSearch()}>Retry</button>
+              <button type="button" className="ts-btn ts-btn-ghost" onClick={() => { resetFilters(); reset(); }}>Clear</button>
+            </div>
+          </div>
+        )}
         {/* Left: filter rail */}
         <div className="ts-area-filters">
           <FilterRail

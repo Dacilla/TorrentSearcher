@@ -25,22 +25,25 @@ export function Topbar({ query, onQuery, onSearch, isSearching, contentType, onC
   return (
     <header className="ts-topbar">
       <div className="ts-search">
-        <span className="ts-search-icon">{I.search}</span>
+        <span className="ts-search-icon" aria-hidden="true">{I.search}</span>
         <input
           className="ts-search-input"
+          aria-label="Search movies and shows"
           placeholder="Search movies, shows, anime… e.g. 'Dune Part Two 2024' or 'Breaking Bad S03E07'"
           value={query}
           onChange={(e) => onQuery(e.target.value)}
           onKeyDown={(e) => { if (e.key === 'Enter') onSearch(); }}
         />
-        <div className="ts-type-seg">
+        <div className="ts-type-seg" role="group" aria-label="Content type">
           {(['auto', 'movie', 'tv'] as const).map((t) => {
             const ct = t === 'auto' ? 'unknown' : t;
             const active = (ct === contentType) || (t === 'auto' && contentType === 'unknown');
             return (
               <button
                 key={t}
+                type="button"
                 className={active ? 'is-on' : ''}
+                aria-pressed={active}
                 onClick={() => onContentType(ct)}
               >
                 {t === 'auto' ? 'Auto' : t === 'movie' ? 'Movie' : 'TV'}
@@ -49,6 +52,7 @@ export function Topbar({ query, onQuery, onSearch, isSearching, contentType, onC
           })}
         </div>
         <button
+          type="button"
           className="ts-search-btn"
           onClick={onSearch}
           disabled={!query.trim() || isSearching}
@@ -61,7 +65,7 @@ export function Topbar({ query, onQuery, onSearch, isSearching, contentType, onC
         </button>
       </div>
 
-      <div className="ts-top-stats">
+      <div className="ts-top-stats" role="status" aria-live="polite">
         <div className="ts-stat">
           <div className="ts-stat-dot" style={{ background: '#10b981' }} />
           <div className="ts-stat-val">

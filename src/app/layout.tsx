@@ -1,4 +1,4 @@
-import type { Metadata } from 'next';
+import type { Metadata, Viewport } from 'next';
 import { Inter, JetBrains_Mono } from 'next/font/google';
 import './globals.css';
 
@@ -17,6 +17,13 @@ const jetbrainsMono = JetBrains_Mono({
 export const metadata: Metadata = {
   title: 'Torrent Searcher',
   description: 'Smart torrent search via Jackett, Sonarr & Radarr',
+};
+
+export const viewport: Viewport = {
+  colorScheme: 'dark',
+  width: 'device-width',
+  initialScale: 1,
+  themeColor: '#0f1414',
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

@@ -17,13 +17,14 @@ export function StatusBar({ trackerStatuses, totalIndexers, config }: Props) {
   const up = trackerStatuses.filter((t) => t.state === 'done').length;
   const errs = trackerStatuses.filter((t) => t.state === 'error').length;
   const apiState = config?.checks?.jackett?.state ?? 'skipped';
+  const apiColor = apiState === 'ok' ? '#10b981' : apiState === 'skipped' ? '#71717a' : apiState === 'missing-config' ? '#f59e0b' : '#ef4444';
 
   return (
     <footer className="ts-statusbar">
       <div className="ts-status-group">
         <span
           className="ts-status-dot"
-          style={{ background: apiState === 'ok' ? '#10b981' : '#ef4444' }}
+          style={{ background: apiColor }}
         />
         <span className="ts-status-k">API</span>
         <span className="ts-status-v">{apiState === 'ok' ? 'online' : apiState}</span>

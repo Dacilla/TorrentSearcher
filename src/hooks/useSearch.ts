@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useRef, useCallback } from 'react';
+import { useState, useRef, useCallback, useEffect } from 'react';
 import {
   TorrentResult,
   SSEEvent,
@@ -31,7 +31,16 @@ function normaliseTitle(title: string): string {
 
 function mergeResults(existing: TorrentResult[], incoming: TorrentResult[]): TorrentResult[] {
   const seenHashes = new Map<string, string>();
-  const seenTitles = new Map(existing.map((r) => [normaliseTitle(r.title), r.id]));
+  // Dedup key includes quality signals so different releases do not collapse.
+  const keyFor = (r: TorrentResult): string =>
+    [
+      normaliseTitle(r.title),
+      r.releaseInfo.resolution,
+      r.releaseInfo.source,
+      r.releaseInfo.codec,
+      Math.round(r.size / (50 * 1024 * 1024)),
+    ].join('|');
+  const seenTitles = new Map(existing.map((r) => [keyFor(r), r.id]));
   const merged = [...existing];
   const idIndex = new Map(merged.map((r, i) => [r.id, i]));
 
@@ -67,7 +76,7 @@ function mergeResults(existing: TorrentResult[], incoming: TorrentResult[]): Tor
       continue;
     }
 
-    const normTitle = normaliseTitle(result.title);
+    const normTitle = keyFor(result);
     const existingId = seenTitles.get(normTitle);
     if (existingId) {
       const existingIdx = idIndex.get(existingId);
@@ -107,8 +116,14 @@ export function useSearch(): UseSearchReturn {
   const [error, setError] = useState<string | null>(null);
 
   const eventSourceRef = useRef<EventSource | null>(null);
+  const resolveAbortRef = useRef<AbortController | null>(null);
+  const searchIdRef = useRef(0);
+  const knownTrackersRef = useRef<Set<string>>(new Set());
 
   const reset = useCallback(() => {
+    searchIdRef.current += 1;
+    resolveAbortRef.current?.abort();
+    resolveAbortRef.current = null;
     eventSourceRef.current?.close();
     eventSourceRef.current = null;
     setState('idle');
@@ -120,22 +135,38 @@ export function useSearch(): UseSearchReturn {
     setError(null);
   }, []);
 
+  // Cleanup on unmount (EventSource + in-flight resolve).
+  useEffect(() => {
+    return () => {
+      searchIdRef.current += 1;
+      resolveAbortRef.current?.abort();
+      eventSourceRef.current?.close();
+    };
+  }, []);
+
   const search = useCallback(async (query: string, contentTypeOverride: ContentType = 'unknown') => {
     if (!query.trim()) return;
+    const searchId = ++searchIdRef.current;
 
     // Clean up previous search
+    resolveAbortRef.current?.abort();
+    const resolveController = new AbortController();
+    resolveAbortRef.current = resolveController;
     eventSourceRef.current?.close();
+    eventSourceRef.current = null;
+    knownTrackersRef.current = new Set();
     setResults([]);
     setTrackerStatuses([]);
     setTotalIndexers(0);
     setCompletedIndexers(0);
     setError(null);
+    setMediaInfo(null);
     setState('resolving');
 
     const detected = detectContentType(query);
     const requestedContentType = contentTypeOverride !== 'unknown' ? contentTypeOverride : detected.type;
 
-    // Resolve media info via TMDB
+    // Resolve media info via TMDB (abortable, race-safe)
     let resolvedMediaInfo: MediaInfo | null = null;
     let resolvedContentType: ContentType = requestedContentType;
 
@@ -144,7 +175,9 @@ export function useSearch(): UseSearchReturn {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ query, contentType: requestedContentType }),
+        signal: resolveController.signal,
       });
+      if (searchId !== searchIdRef.current) return;
       if (!resolveRes.ok) {
         const body = (await resolveRes.json().catch(() => null)) as { error?: string } | null;
         throw new Error(body?.error ?? `Resolve failed (${resolveRes.status})`);
@@ -153,12 +186,17 @@ export function useSearch(): UseSearchReturn {
         mediaInfo: MediaInfo | null;
         detected: { type: ContentType; season?: number; episode?: number };
       };
+      if (searchId !== searchIdRef.current) return;
       resolvedMediaInfo = resolveData.mediaInfo;
       resolvedContentType = resolveData.mediaInfo?.contentType ?? requestedContentType;
       setMediaInfo(resolvedMediaInfo);
     } catch (e) {
+      if (searchId !== searchIdRef.current) return;
+      if (e instanceof DOMException && e.name === 'AbortError') return;
       setError(e instanceof Error ? e.message : 'Media lookup failed; searching by title only.');
     }
+
+    if (searchId !== searchIdRef.current) return;
 
     // Build SSE search URL
     const searchUrl = new URL('/api/search', window.location.origin);
@@ -178,6 +216,10 @@ export function useSearch(): UseSearchReturn {
     eventSourceRef.current = es;
 
     es.onmessage = (event) => {
+      if (searchId !== searchIdRef.current) {
+        es.close();
+        return;
+      }
       let data: SSEEvent;
       try {
         data = JSON.parse(event.data) as SSEEvent;
@@ -185,25 +227,48 @@ export function useSearch(): UseSearchReturn {
         setState('error');
         setError('Search stream returned malformed data.');
         es.close();
-        eventSourceRef.current = null;
+        if (eventSourceRef.current === es) eventSourceRef.current = null;
         return;
       }
 
       switch (data.type) {
-        case 'indexer_start':
-          setTrackerStatuses((prev) => [
-            ...prev,
-            {
-              indexerId: data.indexerId!,
-              indexerName: data.indexerName!,
-              state: 'loading',
-            },
-          ]);
-          setTotalIndexers((n) => n + 1);
+        case 'indexer_start': {
+          const id = data.indexerId!;
+          const isNew = !knownTrackersRef.current.has(id);
+          if (isNew) {
+            knownTrackersRef.current.add(id);
+            setTotalIndexers((n) => n + 1);
+          }
+          setTrackerStatuses((prev) => {
+            if (prev.some((t) => t.indexerId === id)) {
+              return prev.map((t) =>
+                t.indexerId === id
+                  ? { ...t, indexerName: data.indexerName ?? t.indexerName, state: 'loading' as const }
+                  : t
+              );
+            }
+            return [
+              ...prev,
+              {
+                indexerId: id,
+                indexerName: data.indexerName!,
+                state: 'loading',
+              },
+            ];
+          });
           break;
+        }
 
         case 'indexer_results':
           setResults((prev) => mergeResults(prev, data.results ?? []));
+          // Attribute per-indexer hits including duplicates merged into primary.
+          setTrackerStatuses((prev) =>
+            prev.map((t) =>
+              t.indexerId === data.indexerId
+                ? { ...t, resultCount: (t.resultCount ?? 0) + (data.results?.length ?? 0) }
+                : t
+            )
+          );
           break;
 
         case 'indexer_done':
@@ -215,16 +280,6 @@ export function useSearch(): UseSearchReturn {
             )
           );
           setCompletedIndexers((n) => n + 1);
-          // Update result count for this tracker
-          setResults((prev) => {
-            const count = prev.filter((r) => r.indexerId === data.indexerId).length;
-            setTrackerStatuses((ts) =>
-              ts.map((t) =>
-                t.indexerId === data.indexerId ? { ...t, resultCount: count } : t
-              )
-            );
-            return prev;
-          });
           break;
 
         case 'indexer_error':
@@ -243,19 +298,23 @@ export function useSearch(): UseSearchReturn {
             setError(data.error);
             setState('error');
           } else {
+            // A prior resolve failure should not linger after a successful search.
+            setError(null);
             setState('complete');
           }
           es.close();
-          eventSourceRef.current = null;
+          if (eventSourceRef.current === es) eventSourceRef.current = null;
           break;
       }
     };
 
     es.onerror = () => {
-      setError('Search stream disconnected. Check Jackett and try again.');
-      setState('error');
+      if (searchId !== searchIdRef.current) return;
+      // EventSource fires onerror on normal close after complete; only error if still searching.
+      setError((prev) => prev ?? 'Search stream disconnected. Check Jackett and try again.');
+      setState((prev) => (prev === 'searching' ? 'error' : prev));
       es.close();
-      eventSourceRef.current = null;
+      if (eventSourceRef.current === es) eventSourceRef.current = null;
     };
   }, []);
 

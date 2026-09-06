@@ -1,7 +1,8 @@
 'use client';
 
-import { TorrentResult, KNOWN_GOOD_GROUPS } from '@/types';
-import { scoreTorrent } from '@/lib/results/scoring';
+import { useEffect, useState } from 'react';
+import { TorrentResult } from '@/types';
+import { scoreBreakdown, scoreTorrent } from '@/lib/results/scoring';
 import { I, RES_BG, SRC_CLR } from './icons';
 import { fmtBytes, fmtDate, fmtNum } from './helpers';
 
@@ -11,6 +12,17 @@ interface Props {
 }
 
 export function Inspector({ result, onClose }: Props) {
+  const [copyError, setCopyError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!result) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onClose, result]);
+
   if (!result) {
     return (
       <aside className="ts-inspector ts-inspector-empty">
@@ -30,43 +42,17 @@ export function Inspector({ result, onClose }: Props) {
   const resBg = RES_BG[ri.resolution] ?? '#71717a';
   const srcClr = SRC_CLR[ri.source] ?? '#71717a';
   const group = ri.releaseGroup ?? '';
-  const isKnown = KNOWN_GOOD_GROUPS.has(group);
 
-  const breakdown = [
-    {
-      k: 'Resolution',
-      v: ri.resolution,
-      s: ri.resolution === '2160p' ? 35 : ri.resolution === '1080p' ? 28 : ri.resolution === '720p' ? 18 : 8,
-      max: 35,
-    },
-    {
-      k: 'Source',
-      v: ri.source,
-      s: ri.source === 'Remux' ? 18 : ri.source === 'BluRay' ? 16 : ri.source === 'WEB-DL' ? 14 : ri.source === 'WEBRip' ? 10 : 8,
-      max: 18,
-    },
-    {
-      k: 'Codec',
-      v: ri.codec,
-      s: ri.codec === 'AV1' ? 10 : (ri.codec === 'HEVC' || ri.codec === 'x265') ? 9 : ri.codec === 'x264' ? 7 : 2,
-      max: 10,
-    },
-    {
-      k: 'Seeders',
-      v: fmtNum(result.seeders),
-      s: Math.min(25, Math.round(Math.log10(Math.max(result.seeders, 0) + 1) * 10)),
-      max: 25,
-    },
-    {
-      k: 'Group',
-      v: group || '—',
-      s: isKnown ? 6 : 0,
-      max: 6,
-    },
-  ];
+  const breakdown = scoreBreakdown(result);
 
-  const copyHash = () => {
-    if (result.infoHash) navigator.clipboard.writeText(result.infoHash).catch(() => {});
+  const copyHash = async () => {
+    if (!result.infoHash) return;
+    setCopyError(null);
+    try {
+      await navigator.clipboard.writeText(result.infoHash);
+    } catch {
+      setCopyError('Copy failed');
+    }
   };
 
   return (
@@ -107,7 +93,7 @@ export function Inspector({ result, onClose }: Props) {
       {/* Actions */}
       <div className="ts-insp-actions">
         {result.magnetUrl ? (
-          <a href={result.magnetUrl} className="ts-btn ts-btn-primary ts-btn-lg">
+          <a href={result.magnetUrl} rel="noopener noreferrer" className="ts-btn ts-btn-primary ts-btn-lg">
             {I.magnet} Open magnet
           </a>
         ) : (
@@ -115,15 +101,16 @@ export function Inspector({ result, onClose }: Props) {
             {I.magnet} No magnet
           </span>
         )}
-        <a href={result.downloadUrl} className="ts-btn ts-btn-ghost" download>
+        <a href={result.downloadUrl} rel="noopener noreferrer" className="ts-btn ts-btn-ghost">
           {I.download} .torrent
         </a>
         {result.infoHash && (
-          <button className="ts-btn ts-btn-ghost" onClick={copyHash} title="Copy info hash">
+          <button type="button" className="ts-btn ts-btn-ghost" onClick={copyHash} title="Copy info hash">
             {I.copy} Hash
           </button>
         )}
       </div>
+      {copyError && <div style={{ fontSize: 11, color: 'var(--danger)' }}>{copyError}</div>}
 
       {/* Stats grid */}
       <div className="ts-insp-grid">
@@ -141,9 +128,9 @@ export function Inspector({ result, onClose }: Props) {
         {breakdown.map((b) => (
           <div className="ts-bk" key={b.k}>
             <span className="ts-bk-k">{b.k}</span>
-            <span className="ts-bk-v">{b.v}</span>
+            <span className="ts-bk-v">{b.k === 'Seeders' ? fmtNum(Number(b.v)) : b.v}</span>
             <div className="ts-bk-bar">
-              <div className="ts-bk-fill" style={{ width: `${(b.s / b.max) * 100}%` }} />
+              <div className="ts-bk-fill" style={{ width: `${Math.min(100, (b.s / b.max) * 100)}%` }} />
             </div>
             <span className="ts-bk-s">+{b.s}</span>
           </div>
@@ -167,13 +154,13 @@ export function Inspector({ result, onClose }: Props) {
               <span className="ts-alt-flag">primary</span>
             </div>
             {result.duplicateSources?.map((s, i) => (
-              <div className="ts-alt-row" key={s.indexerId ?? s.indexerName ?? `source-${i}`}>
+              <div className="ts-alt-row" key={`${s.indexerId}-${s.guid || i}`}>
                 <span className="ts-alt-name">{s.indexerName}</span>
                 <span className="ts-alt-stat">
                   <span className="ts-up">↑{fmtNum(s.seeders)}</span>
                 </span>
                 {s.magnetUrl ? (
-                  <a href={s.magnetUrl} className="ts-alt-mag" title="Open magnet">
+                  <a href={s.magnetUrl} rel="noopener noreferrer" className="ts-alt-mag" title="Open magnet">
                     {I.magnet}
                   </a>
                 ) : (

@@ -1,5 +1,6 @@
 'use client';
 
+import { useMemo } from 'react';
 import { TorrentResult, KNOWN_GOOD_GROUPS } from '@/types';
 import { SortKey } from '@/hooks/useFilters';
 import { scoreTorrent } from '@/lib/results/scoring';
@@ -29,8 +30,9 @@ interface Props {
 }
 
 export function ResultsTable({ results, sort, setSort, selected, setSelected, density }: Props) {
+  const scoreMap = useMemo(() => new Map(results.map((r) => [r.id, Math.min(100, scoreTorrent(r))])), [results]);
   const bestId = results.length > 0
-    ? results.reduce((best, r) => scoreTorrent(r) > scoreTorrent(best) ? r : best, results[0]).id
+    ? results.reduce((best, r) => (scoreMap.get(r.id) ?? 0) > (scoreMap.get(best.id) ?? 0) ? r : best, results[0]).id
     : null;
 
   const handleSort = (k: string) => {
@@ -51,24 +53,26 @@ export function ResultsTable({ results, sort, setSort, selected, setSelected, de
   }
 
   return (
-    <div className={`ts-table ts-table-${density}`}>
-      <div className="ts-thead" style={{ gridTemplateColumns: COL_WIDTHS }}>
+    <div className={`ts-table ts-table-${density}`} role="grid" aria-label="Search results">
+      <div className="ts-thead" style={{ gridTemplateColumns: COL_WIDTHS }} role="row">
         {COLS.map((c) => (
           <button
             key={c.k}
+            type="button"
             className={`ts-th${sort.key === c.k ? ' is-active' : ''}`}
             onClick={() => handleSort(c.k)}
+            aria-sort={sort.key === c.k ? (sort.dir === 'desc' ? 'descending' : 'ascending') : undefined}
           >
             {c.label}
             {sort.key === c.k && (
-              <span className="ts-th-arrow">{sort.dir === 'desc' ? '↓' : '↑'}</span>
+              <span className="ts-th-arrow" aria-hidden="true">{sort.dir === 'desc' ? '↓' : '↑'}</span>
             )}
           </button>
         ))}
       </div>
-      <div className="ts-tbody">
+      <div className="ts-tbody" role="rowgroup">
         {results.map((r) => {
-          const score = Math.min(100, scoreTorrent(r));
+          const score = scoreMap.get(r.id) ?? 0;
           const ri = r.releaseInfo;
           const group = ri.releaseGroup ?? '';
           const isKnown = KNOWN_GOOD_GROUPS.has(group);
@@ -80,6 +84,7 @@ export function ResultsTable({ results, sort, setSort, selected, setSelected, de
             <div
               key={r.id}
               role="row"
+              aria-selected={selected === r.id}
               tabIndex={0}
               className={[
                 'ts-row',
@@ -155,10 +160,10 @@ export function ResultsTable({ results, sort, setSort, selected, setSelected, de
 
               {/* Seeders */}
               <div className="ts-c-seed">
-                <div className="ts-seed-bar">
+                <div className="ts-seed-bar" aria-hidden="true">
                   <div
                     className="ts-seed-bar-fill"
-                    style={{ width: `${Math.min(100, r.seeders / 30)}%` }}
+                    style={{ width: `${Math.min(100, (Math.log10(r.seeders + 1) / 3) * 100)}%` }}
                   />
                 </div>
                 <span>{fmtNum(r.seeders)}</span>
